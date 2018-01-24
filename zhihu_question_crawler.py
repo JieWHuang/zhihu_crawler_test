@@ -4,18 +4,18 @@ from zhihu_common import mydb
 
 topic_begin_url = 'https://www.zhihu.com/api/v4/topics/'
 
-question_level = 1
-limit = 5
-max_offset = 20  # 最大为1000
+topic_level = 1  # 设置爬取深度
+limit = 5  # 设置每页展示信息个数
+max_offset = 20  # 设置最大页数，最大为1000
 
 
-def get_zhihu_topic_id():
+def get_zhihu_topic():  # 用生成器的方式从MongoDB数据库中取出话题数据
     for item in mydb['zhihu_topic_list'].find():
-        if item['topic_level'] == question_level:
+        if item['topic_level'] == topic_level:
             yield item['topic_id'], item['topic_name']
 
 
-def parse_topic(url, topic_id, topic_name):
+def parse_topic(url, topic_id, topic_name):  # 解析话题URL，得到问题、专栏、用户数据
     html = zhihu_common.get(url)
     json_data = json.loads(html)
     try:
@@ -31,7 +31,7 @@ def parse_topic(url, topic_id, topic_name):
                     'topic_id': topic_id
                 }
                 print(question_info)
-                zhihu_common.save2mongodb(question_info, question_info['type'])
+                # zhihu_common.save2mongodb(question_info, question_info['type'])
             elif item['target'].get('column'):
                 column_title = item['target']['column']['title']
                 column_id = item['target']['column']['id']
@@ -57,15 +57,11 @@ def parse_topic(url, topic_id, topic_name):
         pass
 
 
-def get_zhihu_question_list():
-    for topic_id, topic_name in get_zhihu_topic_id():
-        for offset in range(0, max_offset, limit):
+def main():
+    for topic_id, topic_name in get_zhihu_topic():
+        for offset in range(0, max_offset, limit):  # 生成话题URL
             url = topic_begin_url + '{}/feeds/essence?limit={}&offset={}'.format(topic_id, limit, offset)
             parse_topic(url, topic_id, topic_name)
-
-
-def main():
-    get_zhihu_question_list()
 
 
 if __name__ == '__main__':
