@@ -23,8 +23,9 @@ include = 'headline,gender,locations,business,employments,educations,description
 
 def get_zhihu_user_url():
     for item in mydb['zhihu_answer'].find():
-        zhihu_user_url = user_begin_url + item['author_url_token'] + '?include={}'.format(include)
-        yield zhihu_user_url
+        if len(item['author_name']) != 2:
+            zhihu_user_url = user_begin_url + item['author_url_token'] + '?include={}'.format(include)
+            yield zhihu_user_url
 
 
 def parse_zhihu_user(url):
@@ -95,7 +96,7 @@ def main():
     for zhihu_user_url in get_zhihu_user_url():
         user_info = parse_zhihu_user(zhihu_user_url)
         print(user_info)
-        # zhihu_common.save2mongodb(user_info, user_info['type'])
+        zhihu_common.save2mongodb(user_info, user_info['type'])
 
 
 if __name__ == '__main__':

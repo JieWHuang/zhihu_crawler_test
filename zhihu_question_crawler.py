@@ -5,8 +5,8 @@ from zhihu_common import mydb
 topic_begin_url = 'https://www.zhihu.com/api/v4/topics/'
 
 topic_level = 1  # 设置爬取深度
-limit = 5  # 设置每页展示信息个数
-max_offset = 20  # 设置最大页数，最大为1000
+limit = 20  # 设置每页展示信息个数
+max_offset = 200  # 设置最大页数，最大为1000
 
 
 def get_zhihu_topic():  # 用生成器的方式从MongoDB数据库中取出话题数据
@@ -30,8 +30,8 @@ def parse_topic(url, topic_id, topic_name):  # 解析话题URL，得到问题、
                     'topic_name': topic_name,
                     'topic_id': topic_id
                 }
-                # print(question_info)
-                # zhihu_common.save2mongodb(question_info, question_info['type'])
+                print(question_info)
+                zhihu_common.save2mongodb(question_info, question_info['type'])
             elif item['target'].get('column'):
                 column_title = item['target']['column']['title']
                 column_id = item['target']['column']['id']
