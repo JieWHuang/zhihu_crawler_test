@@ -15,7 +15,7 @@ def get_zhihu_topic_id():
             yield item['topic_id'], item['topic_name']
 
 
-def get_zhihu_question(url, topic_id, topic_name):
+def parse_topic(url, topic_id, topic_name):
     html = new_zhihu_common.get(url)
     json_data = json.loads(html)
     try:
@@ -23,14 +23,15 @@ def get_zhihu_question(url, topic_id, topic_name):
             if item['target'].get('question'):
                 question_title = item['target']['question']['title']
                 question_id = item['target']['question']['id']
-                zhihu_question_info = {
+                question_info = {
                     'type': item['target']['question']['type'],
                     'question_title': question_title,
                     'question_id': question_id,
                     'topic_name': topic_name,
                     'topic_id': topic_id
                 }
-                print(zhihu_question_info)
+                print(question_info)
+                new_zhihu_common.save2mongodb(question_info, question_info['type'])
             elif item['target'].get('column'):
                 column_title = item['target']['column']['title']
                 column_id = item['target']['column']['id']
@@ -44,13 +45,14 @@ def get_zhihu_question(url, topic_id, topic_name):
                     'topic_id': topic_id,
                 }
                 print(column_info)
+                new_zhihu_common.save2mongodb(column_info, column_info['type'])
                 user_info = {
-                    'type':item['target']['column']['author']['type'],
+                    'type': item['target']['column']['author']['type'],
                     'author_name': author_name,
                     'author_url_token': author_url_token
                 }
                 print(user_info)
-
+                new_zhihu_common.save2mongodb(user_info, user_info['type'])
     except:
         pass
 
@@ -59,18 +61,7 @@ def get_zhihu_question_list():
     for topic_id, topic_name in get_zhihu_topic_id():
         for offset in range(0, max_offset, limit):
             url = topic_begin_url + '{}/feeds/essence?limit={}&offset={}'.format(topic_id, limit, offset)
-            get_zhihu_question(url, topic_id, topic_name)
-
-
-def save_zhihu_question_list(data):
-    try:
-        if mydb['zhihu_question_list'].update({'question_id': data['question_id']}, {'$set': data},
-                                              True):  # 保存到MongoDB数据库，重复的则不保存
-            print(data['question_title'], 'Saving to MongoDB...')
-        else:
-            print(data['question_title'], 'Saving to MongoDB Failed')
-    except:
-        pass
+            parse_topic(url, topic_id, topic_name)
 
 
 def main():

@@ -51,3 +51,38 @@ def post(url, count=1):
         print('POST Error! Retrying...')
         count += 1
         return post(url, count)
+
+
+def save2mongodb(data, type):  # 保存数据到MongoDB数据库，方便数据被调用
+    if type == 'topic':
+        try:
+            if mydb['zhihu_topic'].update({'topic_id': data['topic_id']}, {'$set': data}, True):  # 判断重复，若重复，则不保存
+                print(data['topic_name'], 'Saving to MongoDB Successfully...')
+            else:
+                print(data['topic_name'], 'Saving to MongoDB Failed...')
+        except:
+            pass
+    elif type == 'question':
+        try:
+            if mydb['zhihu_question'].update({'question_id': data['question_id']}, {'$set': data}, True):
+                print(data['question_title'], 'Saving to MongoDB Successfully...')
+            else:
+                print(data['question_title'], 'Saving to MongoDB Failed')
+        except:
+            pass
+    elif type == 'column':
+        try:
+            if mydb['zhihu_column'].update({'column_title': data['column_title']}, {'$set': data}, True):
+                print(data['column_title'], 'Saving to MongoDB Successfully...')
+            else:
+                print(data['column_title'], 'Saving to MongoDB Failed')
+        except:
+            pass
+    elif type == 'people':
+        try:
+            if mydb['zhihu_people'].update({'author_url_token': data['author_url_token']}, {'$set': data}, True):
+                print(data['author_name'], 'Saving to MongoDB Successfully...')
+            else:
+                print(data['author_name'], 'Saving to MongoDB Failed')
+        except:
+            pass
