@@ -20,6 +20,7 @@ user_begin_url = 'https://www.zhihu.com/api/v4/members/'
 include = 'headline,gender,locations,business,employments,educations,description,answer_count,question_count,articles_count,' \
           'columns_count,following_count,follower_count,voteup_count,thanked_count'
 
+
 def get_zhihu_user_url():
     for item in mydb['zhihu_answer'].find():
         zhihu_user_url = user_begin_url + item['author_url_token'] + '?include={}'.format(include)
@@ -94,7 +95,7 @@ def main():
     for zhihu_user_url in get_zhihu_user_url():
         user_info = parse_zhihu_user(zhihu_user_url)
         print(user_info)
-        zhihu_common.save2mongodb(user_info, user_info['type'])
+        # zhihu_common.save2mongodb(user_info, user_info['type'])
 
 
 if __name__ == '__main__':

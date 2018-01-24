@@ -30,7 +30,7 @@ def parse_topic(url, topic_id, topic_name):  # 解析话题URL，得到问题、
                     'topic_name': topic_name,
                     'topic_id': topic_id
                 }
-                print(question_info)
+                # print(question_info)
                 # zhihu_common.save2mongodb(question_info, question_info['type'])
             elif item['target'].get('column'):
                 column_title = item['target']['column']['title']
@@ -41,11 +41,13 @@ def parse_topic(url, topic_id, topic_name):  # 解析话题URL，得到问题、
                     'type': item['target']['column']['type'],
                     'column_title': column_title,
                     'column_id': column_id,
+                    'author_name': author_name,
+                    'author_url_token': author_url_token,
                     'topic_name': topic_name,
                     'topic_id': topic_id,
                 }
                 print(column_info)
-                # zhihu_common.save2mongodb(column_info, column_info['type'])
+                zhihu_common.save2mongodb(column_info, column_info['type'])
                 user_info = {
                     'type': item['target']['column']['author']['type'],
                     'author_name': author_name,
