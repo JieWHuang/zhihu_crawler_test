@@ -1,6 +1,6 @@
 import json
-import new_zhihu_common
-from new_zhihu_common import mydb
+import zhihu_common
+from zhihu_common import mydb
 
 topic_begin_url = 'https://www.zhihu.com/api/v4/topics/'
 
@@ -16,7 +16,7 @@ def get_zhihu_topic_id():
 
 
 def parse_topic(url, topic_id, topic_name):
-    html = new_zhihu_common.get(url)
+    html = zhihu_common.get(url)
     json_data = json.loads(html)
     try:
         for item in json_data['data']:
@@ -31,7 +31,7 @@ def parse_topic(url, topic_id, topic_name):
                     'topic_id': topic_id
                 }
                 print(question_info)
-                new_zhihu_common.save2mongodb(question_info, question_info['type'])
+                zhihu_common.save2mongodb(question_info, question_info['type'])
             elif item['target'].get('column'):
                 column_title = item['target']['column']['title']
                 column_id = item['target']['column']['id']
@@ -45,14 +45,14 @@ def parse_topic(url, topic_id, topic_name):
                     'topic_id': topic_id,
                 }
                 print(column_info)
-                # new_zhihu_common.save2mongodb(column_info, column_info['type'])
+                # zhihu_common.save2mongodb(column_info, column_info['type'])
                 user_info = {
                     'type': item['target']['column']['author']['type'],
                     'author_name': author_name,
                     'author_url_token': author_url_token
                 }
                 print(user_info)
-                # new_zhihu_common.save2mongodb(user_info, user_info['type'])
+                # zhihu_common.save2mongodb(user_info, user_info['type'])
     except:
         pass
 
