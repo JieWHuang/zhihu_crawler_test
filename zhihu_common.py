@@ -52,7 +52,7 @@ def post(url, count=1):  # POST请求
 
 
 def save2mongodb(data, type):  # 保存数据到MongoDB数据库，方便数据被调用
-    if type == 'topic':
+    if type == 'topic':  # 通过判断数据信息类型，进行数据存储
         try:
             if mydb['zhihu_topic'].update({'topic_id': data['topic_id']}, {'$set': data}, True):  # 判断重复，若重复，则不保存
                 print(data['topic_name'], 'Saving to MongoDB Successfully...')

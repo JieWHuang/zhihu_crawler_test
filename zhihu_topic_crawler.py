@@ -3,7 +3,7 @@ import zhihu_common
 import time
 
 start_url = 'https://www.zhihu.com/topic/19776749/organize/entire'
-max_level = 3
+max_level = 3  # 设置爬取深度
 
 
 def get_first_level_topic_url(url):  # 广度优先遍历根话题下第一层话题
