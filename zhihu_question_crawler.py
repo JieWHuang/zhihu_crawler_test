@@ -52,7 +52,7 @@ def parse_topic(url, topic_id, topic_name):  # 解析话题URL，得到问题、
                     'author_url_token': author_url_token
                 }
                 print(user_info)
-                # zhihu_common.save2mongodb(user_info, user_info['type'])
+                zhihu_common.save2mongodb(user_info, user_info['type'])
     except:
         pass
 

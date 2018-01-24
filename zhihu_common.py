@@ -84,3 +84,11 @@ def save2mongodb(data, type):  # 保存数据到MongoDB数据库，方便数据�
                 print(data['author_name'], 'Saving to MongoDB Failed')
         except:
             pass
+    elif type == 'answer':
+        try:
+            if mydb['zhihu_answer'].update({'author_url_token': data['author_url_token']}, {'$set': data}, True):
+                print(data['author_name'], 'Saving to MongoDB Successfully...')
+            else:
+                print(data['author_name'], 'Saving to MongoDB Failed')
+        except:
+            pass
