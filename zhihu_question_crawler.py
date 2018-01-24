@@ -45,14 +45,14 @@ def parse_topic(url, topic_id, topic_name):
                     'topic_id': topic_id,
                 }
                 print(column_info)
-                new_zhihu_common.save2mongodb(column_info, column_info['type'])
+                # new_zhihu_common.save2mongodb(column_info, column_info['type'])
                 user_info = {
                     'type': item['target']['column']['author']['type'],
                     'author_name': author_name,
                     'author_url_token': author_url_token
                 }
                 print(user_info)
-                new_zhihu_common.save2mongodb(user_info, user_info['type'])
+                # new_zhihu_common.save2mongodb(user_info, user_info['type'])
     except:
         pass
 
