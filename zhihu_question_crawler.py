@@ -49,7 +49,7 @@ def get_zhihu_question(url, topic_id, topic_name):
                     'author_name': author_name,
                     'author_url_token': author_url_token
                 }
-                # print(user_info)
+                print(user_info)
 
     except:
         pass
