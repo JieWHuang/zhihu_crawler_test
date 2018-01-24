@@ -9,7 +9,7 @@ max_level = 3
 
 def get_first_level_topic_url(url):  # 广度优先遍历根话题下第一层话题
     topic_level = 1  # 设置第一层话题的深度为1
-    html = new_new_zhihu_common.post(url)  # 知乎话题树的请求方式是POST
+    html = new_zhihu_common.post(url)  # 知乎话题树的请求方式是POST
     json_data = json.loads(html)  # 解析json网页内容
     for item in json_data['msg'][1]:
         topic_name = item[0][1]  # 话题名称
@@ -31,7 +31,7 @@ def get_topic_info(url, topic_level):  # 深度优先遍历
     # time.sleep(1)
     try:
         if topic_level <= max_level:  # 判断话题爬虫深度
-            html = new_new_zhihu_common.post(url)
+            html = new_zhihu_common.post(url)
             json_data = json.loads(html)
             for item in json_data['msg'][1]:
                 topic_id = item[0][2]
