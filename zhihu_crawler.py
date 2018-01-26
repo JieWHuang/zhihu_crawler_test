@@ -8,6 +8,7 @@ import re
 
 
 class ZhiHuCommon(object):
+    '''爬虫通用函数类'''
     headers = {
         'Cookie': 'q_c1=1883f1840aae4da282d328092b586954|1514120291000|1514120291000;'
                   ' __utmz=51854390.1514120292.1.1.utmcsr=baidu|utmccn=(organic)|utmcmd=organic;'
@@ -70,8 +71,8 @@ class ZhiHuCommon(object):
     def save2mongodb(data, type):  # 保存数据到MongoDB数据库，方便数据被调用
         if type == 'topic':  # 通过判断数据信息类型，进行数据存储
             try:
-                if ZhiHuCommon.mydb['zhihu_topic'].update({'topic_id': data['topic_id']}, {'$set': data},
-                                                          True):  # 判断重复，若重复，则不保存
+                # 判断重复，若重复，则不保存
+                if ZhiHuCommon.mydb['zhihu_topic'].update({'topic_id': data['topic_id']}, {'$set': data}, True):
                     print(data['topic_name'], 'Saving to MongoDB Successfully...')
                 else:
                     print(data['topic_name'], 'Saving to MongoDB Failed...')
@@ -321,6 +322,7 @@ class ZhiHuUserCrawler(object):
         #                'is_org_createpin_white_user,mutual_followees_count,vote_to_count,vote_from_count,thank_to_count,thank_from_count,' \
         #                'thanked_count,description,hosted_live_count,participated_live_count,allow_message,industry_category,org_name,' \
         #                'org_homepage,badge[?(type=best_answerer)].topics'
+        # 要爬取的信息集合
         self.include = 'headline,gender,locations,business,employments,educations,description,answer_count,question_count,articles_count,' \
                        'columns_count,following_count,follower_count,voteup_count,thanked_count'
 
