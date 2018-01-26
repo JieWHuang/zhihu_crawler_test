@@ -375,13 +375,13 @@ class ZhiHuUserCrawler(object):
                 'type': json_data['type'],
                 'author_name': author_name,
                 'author_url_token': author_url_token,
-                'headline': re.compile(r'<[^>]+>', re.S).sub('', headline),
+                'headline': re.compile(r'<[^>]+>', re.S).sub('', headline),  # 数据清洗，将html标签过滤掉
                 'gender': gender,
                 'locations': locations,
                 'business': business,
                 'employments': employments,
                 'educations': educations,
-                'description': re.compile(r'<[^>]+>', re.S).sub('', description),
+                'description': re.compile(r'<[^>]+>', re.S).sub('', description),  # 数据清洗，将html标签过滤掉
                 'answer_count': answer_count,
                 'question_count': question_count,
                 'articles_count': articles_count,
