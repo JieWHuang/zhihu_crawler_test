@@ -6,6 +6,7 @@ import string
 import random
 import re
 
+
 class ZhiHuCommon(object):
     '''爬虫通用函数类'''
     with open('Cookies.txt') as f:
@@ -112,7 +113,7 @@ class ZhiHuCommon(object):
 class ZhiHuTopicCrawler(object):
     def __init__(self):
         self.start_url = 'https://www.zhihu.com/topic/19776749/organize/entire'
-        self.max_level = 1  # 设置爬取深度
+        self.max_level = 3  # 设置爬取深度
 
     def get_first_level_topic_url(self, url):  # 广度优先遍历根话题下第一层话题
         topic_level = 1  # 设置第一层话题的深度为1
@@ -153,7 +154,7 @@ class ZhiHuTopicCrawler(object):
                             'parent_topic_id': json_data['msg'][0][2]
                         }
                         print(topic_info)
-                        # ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])
+                        ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])
                     if item[0][1] == '加载更多':  # 负责翻页，实现广度遍历
                         next_page_url = self.start_url + '?child={}&parent={}'.format(item[0][2], item[0][3])
                         self.get_topic_info(next_page_url, topic_level)
@@ -173,12 +174,12 @@ class ZhiHuTopicCrawler(object):
 class ZhiHuQuestionCrawler(object):
     def __init__(self):
         self.topic_begin_url = 'https://www.zhihu.com/api/v4/topics/'
-        self.topic_level = 1  # 设置爬取深度
+        self.topic_level = 3  # 设置爬取深度
         self.limit = 20  # 设置每页展示信息个数
-        self.max_offset = 200  # 设置最大页数，最大为1000
+        self.max_offset = 1000  # 设置最大页数，最大为1000
 
     def get_zhihu_topic(self):  # 用生成器的方式从MongoDB数据库中取出话题数据
-        for item in ZhiHuCommon.mydb['zhihu_topic'].find():
+        for item in ZhiHuCommon.mydb['zhihu_topic_backup'].find():
             if item['topic_level'] == self.topic_level:
                 yield item['topic_id'], item['topic_name']
 
@@ -226,10 +227,14 @@ class ZhiHuQuestionCrawler(object):
             pass
 
     def question_crawler(self):
-        for topic_id, topic_name in self.get_zhihu_topic():
+        for item in ZhiHuCommon.mydb['zhihu_topic'].find():  # 备份话题信息数据库
+            ZhiHuCommon.mydb['zhihu_topic_backup'].insert(item)
+        for topic_id, topic_name in self.get_zhihu_topic():  # 从数据库拿到话题id和话题名字
             for offset in range(0, self.max_offset, self.limit):  # 生成话题URL
                 url = self.topic_begin_url + '{}/feeds/essence?limit={}&offset={}'.format(topic_id, self.limit, offset)
-                self.parse_topic(url, topic_id, topic_name)
+                self.parse_topic(url, topic_id, topic_name)  # 解析得到每个话题的问题信息
+            # 每爬完一个话题下的问题，就删除备份数据库的这一个话题的信息，实现断点续爬
+            ZhiHuCommon.mydb['zhihu_topic_backup'].delete_one({"topic_name": topic_name})
 
 
 class ZhiHuAnswerCrawler(object):
@@ -394,11 +399,11 @@ class ZhiHuUserCrawler(object):
 
 
 if __name__ == '__main__':
-    ZhiHuTopicCrawler = ZhiHuTopicCrawler()
-    ZhiHuTopicCrawler.topic_crawler()
+    # ZhiHuTopicCrawler = ZhiHuTopicCrawler()
+    # ZhiHuTopicCrawler.topic_crawler()
 
-    # ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
-    # ZhiHuQuestionCrawler.question_crawler()
+    ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
+    ZhiHuQuestionCrawler.question_crawler()
 
     # ZhiHuAnswerCrawler = ZhiHuAnswerCrawler()
     # ZhiHuAnswerCrawler.answer_crawler()
