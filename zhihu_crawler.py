@@ -6,7 +6,6 @@ import string
 import random
 import re
 
-
 class ZhiHuCommon(object):
     '''爬虫通用函数类'''
     with open('Cookies.txt') as f:
@@ -154,7 +153,7 @@ class ZhiHuTopicCrawler(object):
                             'parent_topic_id': json_data['msg'][0][2]
                         }
                         print(topic_info)
-                        ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])
+                        # ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])
                     if item[0][1] == '加载更多':  # 负责翻页，实现广度遍历
                         next_page_url = self.start_url + '?child={}&parent={}'.format(item[0][2], item[0][3])
                         self.get_topic_info(next_page_url, topic_level)
