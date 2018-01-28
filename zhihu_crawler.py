@@ -174,9 +174,9 @@ class ZhiHuTopicCrawler(object):
 class ZhiHuQuestionCrawler(object):
     def __init__(self):
         self.topic_begin_url = 'https://www.zhihu.com/api/v4/topics/'
-        self.topic_level = 3  # 设置爬取深度
+        self.topic_level = 2  # 设置爬取深度
         self.limit = 20  # 设置每页展示信息个数
-        self.max_offset = 1000  # 设置最大页数，最大为1000
+        self.max_offset = 100  # 设置最大页数，最大为1000
 
     def get_zhihu_topic(self):  # 用生成器的方式从MongoDB数据库中取出话题数据
         for item in ZhiHuCommon.mydb['zhihu_topic_backup'].find():
@@ -227,21 +227,23 @@ class ZhiHuQuestionCrawler(object):
             pass
 
     def question_crawler(self):
-        for item in ZhiHuCommon.mydb['zhihu_topic'].find():  # 备份话题信息数据库
-            ZhiHuCommon.mydb['zhihu_topic_backup'].insert(item)
+        if 'zhihu_topic_backup' not in ZhiHuCommon.mydb.collection_names():  # 如果是第一次运行的时候，备份话题信息数据库
+            for item in ZhiHuCommon.mydb['zhihu_topic'].find():
+                ZhiHuCommon.mydb['zhihu_topic_backup'].insert(item)
         for topic_id, topic_name in self.get_zhihu_topic():  # 从数据库拿到话题id和话题名字
             for offset in range(0, self.max_offset, self.limit):  # 生成话题URL
                 url = self.topic_begin_url + '{}/feeds/essence?limit={}&offset={}'.format(topic_id, self.limit, offset)
                 self.parse_topic(url, topic_id, topic_name)  # 解析得到每个话题的问题信息
-            # 每爬完一个话题下的问题，就删除备份数据库的这一个话题的信息，实现断点续爬
-            ZhiHuCommon.mydb['zhihu_topic_backup'].delete_one({"topic_name": topic_name})
+                # 每爬完一个话题下的问题，就删除备份数据库的这一个话题的信息，实现断点续爬
+                if offset == self.max_offset - self.limit:
+                    ZhiHuCommon.mydb['zhihu_topic_backup'].delete_one({"topic_name": topic_name})
 
 
 class ZhiHuAnswerCrawler(object):
     def __init__(self):
         self.question_begin_url = 'https://www.zhihu.com/api/v4/questions/'
         self.include = 'data[*].is_normal,voteup_count,content'
-        self.limit = 20
+        self.limit = 20  # 设置每页展示信息个数
 
     def random_str(self):  # 生成随机字符串
         random_str_len = 10
@@ -249,7 +251,7 @@ class ZhiHuAnswerCrawler(object):
         return random_str
 
     def get_question_id(self):  # 从MongoDB数据库中取出问题数据
-        for item in ZhiHuCommon.mydb['zhihu_question'].find():
+        for item in ZhiHuCommon.mydb['zhihu_question_backup'].find():
             yield item['question_id'], item['question_title']
 
     def get_answer_count(self, url):  # 得到问题回答的总数
@@ -263,10 +265,11 @@ class ZhiHuAnswerCrawler(object):
             question_id, self.include, self.limit)
         answer_count = self.get_answer_count(question_start_url)
         max_offset = int(answer_count / self.limit) * self.limit
+        # max_offset = 100 测试用
         for offset in range(0, max_offset, self.limit):
             question_url = self.question_begin_url + '{}/answers?include={}&offset={}&limit={}&sort_by=default'.format(
                 question_id, self.include, offset, self.limit)
-            yield question_title, question_url
+            yield question_url, offset, max_offset, self.limit
 
     def parse_answer(self, url):
         html = ZhiHuCommon.get(url)
@@ -293,16 +296,21 @@ class ZhiHuAnswerCrawler(object):
                     'answer_content_length': len(answer_content),
                     'answer_voteup_count': answer_voteup_count
                 }
-                yield answer_info
+                print(answer_info)
+                ZhiHuCommon.save2mongodb(answer_info, answer_info['type'])
         except:
             pass
 
     def answer_crawler(self):
-        for question_id, question_title in self.get_question_id():
-            for question_title, question_url in self.get_answer_url(question_id, question_title):
-                for answer_info in self.parse_answer(question_url):
-                    print(answer_info)
-                    ZhiHuCommon.save2mongodb(answer_info, answer_info['type'])
+        if 'zhihu_question_backup' not in ZhiHuCommon.mydb.collection_names():  # 如果是第一次运行的时候，备份话题信息数据库
+            for item in ZhiHuCommon.mydb['zhihu_question'].find():
+                ZhiHuCommon.mydb['zhihu_question_backup'].insert(item)
+        for question_id, question_title in self.get_question_id():  # 从数据库拿到问题id和问题名字
+            for question_url, offset, max_offset, limit in self.get_answer_url(question_id, question_title):
+                self.parse_answer(question_url)  # 解析得到每个问题下的回答信息
+                # 每爬完一个问题下的回答，就删除备份数据库的这一个问题的信息，实现断点续爬
+                if offset == max_offset - limit:
+                    ZhiHuCommon.mydb['zhihu_question_backup'].delete_one({"question_id": question_id})
 
 
 class ZhiHuUserCrawler(object):
@@ -323,10 +331,10 @@ class ZhiHuUserCrawler(object):
                        'columns_count,following_count,follower_count,voteup_count,thanked_count'
 
     def get_user_url(self):
-        for item in ZhiHuCommon.mydb['zhihu_answer'].find():
+        for item in ZhiHuCommon.mydb['zhihu_answer_backup'].find():
             if len(item['author_name']) != 2:
                 zhihu_user_url = self.user_begin_url + item['author_url_token'] + '?include={}'.format(self.include)
-                yield zhihu_user_url
+                yield zhihu_user_url, item['author_url_token']
 
     def parse_user_info(self, url):
         html = ZhiHuCommon.get(url)
@@ -387,26 +395,30 @@ class ZhiHuUserCrawler(object):
                 'voteup_count': voteup_count,
                 'thanked_count': thanked_count,
             }
-            return user_info
+            print(user_info)
+            ZhiHuCommon.save2mongodb(user_info, user_info['type'])
         except Exception as e:
             pass
 
     def user_crawler(self):
-        for user_url in self.get_user_url():
-            user_info = self.parse_user_info(user_url)
-            print(user_info)
-            ZhiHuCommon.save2mongodb(user_info, user_info['type'])
+        if 'zhihu_answer_backup' not in ZhiHuCommon.mydb.collection_names():  # 如果是第一次运行的时候，备份话题信息数据库
+            for item in ZhiHuCommon.mydb['zhihu_answer'].find():
+                ZhiHuCommon.mydb['zhihu_answer_backup'].insert(item)
+        for user_url, author_url_token in self.get_user_url():
+            self.parse_user_info(user_url)
+            # 实现断点续爬
+            ZhiHuCommon.mydb['zhihu_answer_backup'].delete_one({"author_url_token": author_url_token})
 
 
 if __name__ == '__main__':
     # ZhiHuTopicCrawler = ZhiHuTopicCrawler()
     # ZhiHuTopicCrawler.topic_crawler()
 
-    ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
-    ZhiHuQuestionCrawler.question_crawler()
+    # ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
+    # ZhiHuQuestionCrawler.question_crawler()
 
     # ZhiHuAnswerCrawler = ZhiHuAnswerCrawler()
     # ZhiHuAnswerCrawler.answer_crawler()
 
-    # ZhiHuUserCrawler = ZhiHuUserCrawler()
-    # ZhiHuUserCrawler.user_crawler()
+    ZhiHuUserCrawler = ZhiHuUserCrawler()
+    ZhiHuUserCrawler.user_crawler()
