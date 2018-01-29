@@ -66,27 +66,27 @@ class ZhiHuCommon(object):
             try:
                 # 判断重复，若重复，则不保存
                 if ZhiHuCommon.mydb['zhihu_topic'].update({'topic_id': data['topic_id']}, {'$set': data}, True):
-                    print(data['topic_name'], 'Saving to MongoDB Successfully...')
+                    print(data['topic_name'], 'Saving to mydb[\'zhihu_topic\'] Successfully...')
                 else:
-                    print(data['topic_name'], 'Saving to MongoDB Failed...')
+                    print(data['topic_name'], 'Saving to mydb[\'zhihu_topic\'] Failed...')
             except BaseException:
                 pass
         elif type == 'question':
             try:
                 if ZhiHuCommon.mydb['zhihu_question'].update({'question_id': data['question_id']}, {'$set': data},
                                                              True):
-                    print(data['question_title'], 'Saving to MongoDB Successfully...')
+                    print(data['question_title'], 'Saving to mydb[\'zhihu_question\'] Successfully...')
                 else:
-                    print(data['question_title'], 'Saving to MongoDB Failed')
+                    print(data['question_title'], 'Saving to mydb[\'zhihu_question\'] Failed')
             except BaseException:
                 pass
         elif type == 'column':
             try:
                 if ZhiHuCommon.mydb['zhihu_column'].update({'column_title': data['column_title']}, {'$set': data},
                                                            True):
-                    print(data['column_title'], 'Saving to MongoDB Successfully...')
+                    print(data['column_title'], 'Saving to mydb[\'zhihu_column\'] Successfully...')
                 else:
-                    print(data['column_title'], 'Saving to MongoDB Failed')
+                    print(data['column_title'], 'Saving to mydb[\'zhihu_column\'] Failed')
             except BaseException:
                 pass
         elif type == 'people':
@@ -94,19 +94,19 @@ class ZhiHuCommon(object):
                 if ZhiHuCommon.mydb['zhihu_people'].update({'author_url_token': data['author_url_token']},
                                                            {'$set': data},
                                                            True):
-                    print(data['author_name'], 'Saving to MongoDB Successfully...')
+                    print(data['author_name'], 'Saving to mydb[\'zhihu_people\'] Successfully...')
                 else:
-                    print(data['author_name'], 'Saving to MongoDB Failed')
+                    print(data['author_name'], 'Saving to mydb[\'zhihu_people\'] Failed')
             except BaseException:
                 pass
         elif type == 'answer':
             try:
-                if ZhiHuCommon.mydb['zhihu_answer'].update({'author_url_token': data['author_url_token']},
+                if ZhiHuCommon.mydb['zhihu_answer'].update({'author_name': data['author_name']},
                                                            {'$set': data},
                                                            True):
-                    print(data['author_name'], 'Saving to MongoDB Successfully...')
+                    print(data['author_name'], 'Saving to mydb[\'zhihu_answer\'] Successfully...')
                 else:
-                    print(data['author_name'], 'Saving to MongoDB Failed')
+                    print(data['author_name'], 'Saving to mydb[\'zhihu_answer\'] Failed')
             except BaseException:
                 pass
 
@@ -287,8 +287,8 @@ class ZhiHuAnswerCrawler(object):
         question_start_url = self.question_begin_url + '{}/answers?include={}&offset=0&limit={}&sort_by=default'.format(
             question_id, self.include, self.limit)
         answer_count = self.get_answer_count(question_start_url)
-        max_offset = int(answer_count / self.limit) * self.limit
-        # max_offset = 100 测试用
+        # max_offset = int(answer_count / self.limit) * self.limit
+        max_offset = 20  # 测试用
         for offset in range(0, max_offset, self.limit):
             question_url = self.question_begin_url + '{}/answers?include={}&offset={}&limit={}&sort_by=default'.format(
                 question_id, self.include, offset, self.limit)
@@ -335,6 +335,11 @@ class ZhiHuAnswerCrawler(object):
                 if offset == max_offset - limit:
                     ZhiHuCommon.mydb['zhihu_question_backup'].delete_one({"question_id": question_id})
 
+                # 负责显示进度条
+                num = ZhiHuCommon.mydb['zhihu_question'].count() - ZhiHuCommon.mydb['zhihu_question_backup'].count()
+                count = ZhiHuCommon.mydb['zhihu_question'].count()
+                ZhiHuCommon.view_bar(num, count)
+
 
 class ZhiHuUserCrawler(object):
     def __init__(self):
@@ -352,6 +357,13 @@ class ZhiHuUserCrawler(object):
         # 要爬取的信息集合
         self.include = 'headline,gender,locations,business,employments,educations,description,answer_count,question_count,articles_count,' \
                        'columns_count,following_count,follower_count,voteup_count,thanked_count'
+
+    def get_user_count(self, collection_name):  # 从表内获取除匿名用户外的用户总数
+        count = 0
+        for item in ZhiHuCommon.mydb[collection_name].find():
+            if len(item['author_name']) != 2:
+                count += 1
+        return count
 
     def get_user_url(self):
         for item in ZhiHuCommon.mydb['zhihu_answer_backup'].find():
@@ -432,16 +444,21 @@ class ZhiHuUserCrawler(object):
             # 实现断点续爬
             ZhiHuCommon.mydb['zhihu_answer_backup'].delete_one({"author_url_token": author_url_token})
 
+            # 负责显示进度条
+            num = self.get_user_count('zhihu_answer') - self.get_user_count('zhihu_answer_backup')
+            count = self.get_user_count('zhihu_answer')
+            ZhiHuCommon.view_bar(num, count)
+
 
 if __name__ == '__main__':
     # ZhiHuTopicCrawler = ZhiHuTopicCrawler()
     # ZhiHuTopicCrawler.topic_crawler()
 
-    ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
-    ZhiHuQuestionCrawler.question_crawler()
+    # ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
+    # ZhiHuQuestionCrawler.question_crawler()
 
     # ZhiHuAnswerCrawler = ZhiHuAnswerCrawler()
     # ZhiHuAnswerCrawler.answer_crawler()
 
-    # ZhiHuUserCrawler = ZhiHuUserCrawler()
-    # ZhiHuUserCrawler.user_crawler()
+    ZhiHuUserCrawler = ZhiHuUserCrawler()
+    ZhiHuUserCrawler.user_crawler()
