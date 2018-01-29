@@ -5,6 +5,7 @@ import time
 import string
 import random
 import re
+import sys
 
 
 class ZhiHuCommon(object):
@@ -68,7 +69,7 @@ class ZhiHuCommon(object):
                     print(data['topic_name'], 'Saving to MongoDB Successfully...')
                 else:
                     print(data['topic_name'], 'Saving to MongoDB Failed...')
-            except:
+            except BaseException:
                 pass
         elif type == 'question':
             try:
@@ -77,7 +78,7 @@ class ZhiHuCommon(object):
                     print(data['question_title'], 'Saving to MongoDB Successfully...')
                 else:
                     print(data['question_title'], 'Saving to MongoDB Failed')
-            except:
+            except BaseException:
                 pass
         elif type == 'column':
             try:
@@ -86,7 +87,7 @@ class ZhiHuCommon(object):
                     print(data['column_title'], 'Saving to MongoDB Successfully...')
                 else:
                     print(data['column_title'], 'Saving to MongoDB Failed')
-            except:
+            except BaseException:
                 pass
         elif type == 'people':
             try:
@@ -96,7 +97,7 @@ class ZhiHuCommon(object):
                     print(data['author_name'], 'Saving to MongoDB Successfully...')
                 else:
                     print(data['author_name'], 'Saving to MongoDB Failed')
-            except:
+            except BaseException:
                 pass
         elif type == 'answer':
             try:
@@ -106,8 +107,16 @@ class ZhiHuCommon(object):
                     print(data['author_name'], 'Saving to MongoDB Successfully...')
                 else:
                     print(data['author_name'], 'Saving to MongoDB Failed')
-            except:
+            except BaseException:
                 pass
+
+    @staticmethod
+    def view_bar(num, total):  # 爬虫进度条
+        rate = num / total
+        rate_num = int(rate * 100)
+        r = '\r[%s%s]%d%%\n' % ("=" * rate_num, " " * (100 - rate_num), rate_num)
+        sys.stdout.write(r)
+        sys.stdout.flush()
 
 
 class ZhiHuTopicCrawler(object):
@@ -163,7 +172,7 @@ class ZhiHuTopicCrawler(object):
                             child_topic_url = self.start_url + '?child=&parent={}'.format(item[0][2])
                             child_topic_level = topic_level + 1
                             self.get_topic_info(child_topic_url, child_topic_level)
-        except:
+        except BaseException:
             print('Get_Topic_Info Error!')  # 若发生异常，则重新调用方法
 
     def topic_crawler(self):
@@ -174,9 +183,16 @@ class ZhiHuTopicCrawler(object):
 class ZhiHuQuestionCrawler(object):
     def __init__(self):
         self.topic_begin_url = 'https://www.zhihu.com/api/v4/topics/'
-        self.topic_level = 2  # 设置爬取深度
+        self.topic_level = 3  # 设置爬取深度
         self.limit = 20  # 设置每页展示信息个数
-        self.max_offset = 100  # 设置最大页数，最大为1000
+        self.max_offset = 20  # 设置最大页数，最大为1000
+
+    def get_topic_count(self, collection_name):
+        count = 0
+        for item in ZhiHuCommon.mydb[collection_name].find():
+            if item['topic_level'] == self.topic_level:
+                count += 1
+        return count
 
     def get_zhihu_topic(self):  # 用生成器的方式从MongoDB数据库中取出话题数据
         for item in ZhiHuCommon.mydb['zhihu_topic_backup'].find():
@@ -223,20 +239,27 @@ class ZhiHuQuestionCrawler(object):
                     }
                     print(user_info)
                     ZhiHuCommon.save2mongodb(user_info, user_info['type'])
-        except:
+        except BaseException:
             pass
 
     def question_crawler(self):
         if 'zhihu_topic_backup' not in ZhiHuCommon.mydb.collection_names():  # 如果是第一次运行的时候，备份话题信息数据库
             for item in ZhiHuCommon.mydb['zhihu_topic'].find():
                 ZhiHuCommon.mydb['zhihu_topic_backup'].insert(item)
+
+        # 解析话题，得到每个话题下的问题
         for topic_id, topic_name in self.get_zhihu_topic():  # 从数据库拿到话题id和话题名字
             for offset in range(0, self.max_offset, self.limit):  # 生成话题URL
                 url = self.topic_begin_url + '{}/feeds/essence?limit={}&offset={}'.format(topic_id, self.limit, offset)
                 self.parse_topic(url, topic_id, topic_name)  # 解析得到每个话题的问题信息
+
                 # 每爬完一个话题下的问题，就删除备份数据库的这一个话题的信息，实现断点续爬
                 if offset == self.max_offset - self.limit:
                     ZhiHuCommon.mydb['zhihu_topic_backup'].delete_one({"topic_name": topic_name})
+            # 负责显示进度条
+            num = self.get_topic_count('zhihu_topic') - self.get_topic_count('zhihu_topic_backup')
+            count = self.get_topic_count('zhihu_topic')
+            ZhiHuCommon.view_bar(num, count)
 
 
 class ZhiHuAnswerCrawler(object):
@@ -298,7 +321,7 @@ class ZhiHuAnswerCrawler(object):
                 }
                 print(answer_info)
                 ZhiHuCommon.save2mongodb(answer_info, answer_info['type'])
-        except:
+        except BaseException:
             pass
 
     def answer_crawler(self):
@@ -414,11 +437,11 @@ if __name__ == '__main__':
     # ZhiHuTopicCrawler = ZhiHuTopicCrawler()
     # ZhiHuTopicCrawler.topic_crawler()
 
-    # ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
-    # ZhiHuQuestionCrawler.question_crawler()
+    ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
+    ZhiHuQuestionCrawler.question_crawler()
 
     # ZhiHuAnswerCrawler = ZhiHuAnswerCrawler()
     # ZhiHuAnswerCrawler.answer_crawler()
 
-    ZhiHuUserCrawler = ZhiHuUserCrawler()
-    ZhiHuUserCrawler.user_crawler()
+    # ZhiHuUserCrawler = ZhiHuUserCrawler()
+    # ZhiHuUserCrawler.user_crawler()
