@@ -6,26 +6,28 @@ import string
 import random
 import re
 import sys
+import multiprocessing
 
 
 class ZhiHuCommon(object):
     '''爬虫通用函数类'''
-    with open('Cookies.txt') as f:
+    with open('Cookies.txt') as f:  # 读取Cookies.txt内的Cookies
         Cookies = f.read()
-    xsrf = re.findall('_xsrf=(.*?);', Cookies)
+    xsrf = re.findall('_xsrf=(.*?);', Cookies)  # 用正则表达式找到Cookies里面含有的_xsrf信息
     headers = {
         'Cookie': Cookies,
         'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) '
                       'Chrome/63.0.3239.132 Safari/537.36',
     }  # 请求头，通过Cookie登录知乎网
     data = {'_xsrf': str(xsrf[0])}  # POST请求需要传入的参数
-
+    # 爬虫配置信息
     client = pymongo.MongoClient('localhost', 27017)  # 连接MongoDB数据库
     mydb = client['mydb']  # 创建数据库
     max_count = 5  # 最大尝试次数
 
     @staticmethod
     def get(url, count=1):  # GET请求
+        # 显示get的传入参数，方便调试
         print('Crawling...', url)
         print('Trying Count...', count)
         if count >= ZhiHuCommon.max_count:
@@ -33,9 +35,9 @@ class ZhiHuCommon(object):
             return None
         try:
             response = requests.get(url, headers=ZhiHuCommon.headers)
-            if response.status_code == 200:
+            if response.status_code == 200:  # 状态码为200表示正常
                 response.encoding = response.apparent_encoding  # 确保中文能正常显示
-                return response.text
+                return response.text  # 返回html文本
             return None
         except Exception:  # 若出现异常，则再次尝试，若尝试5次还是失败，则返回None
             print('GET Error! Retrying...')
@@ -44,6 +46,7 @@ class ZhiHuCommon(object):
 
     @staticmethod
     def post(url, count=1):  # POST请求
+        # 显示post的传入参数，方便调试
         print('Crawling...', url)
         print('Trying Count...', count)
         if count >= ZhiHuCommon.max_count:
@@ -51,9 +54,9 @@ class ZhiHuCommon(object):
             return None
         try:
             response = requests.post(url, data=ZhiHuCommon.data, headers=ZhiHuCommon.headers)
-            if response.status_code == 200:
+            if response.status_code == 200:  # 状态码为200表示正常
                 response.encoding = response.apparent_encoding  # 确保中文能正常显示
-                return response.text
+                return response.text  # 返回html文本
             return None
         except Exception:  # 若出现异常，则再次尝试，若尝试5次还是失败，则返回None
             print('POST Error! Retrying...')
@@ -92,8 +95,7 @@ class ZhiHuCommon(object):
         elif type == 'people':
             try:
                 if ZhiHuCommon.mydb['zhihu_people'].update({'author_url_token': data['author_url_token']},
-                                                           {'$set': data},
-                                                           True):
+                                                           {'$set': data}, True):
                     print(data['author_name'], 'Saving to mydb[\'zhihu_people\'] Successfully...')
                 else:
                     print(data['author_name'], 'Saving to mydb[\'zhihu_people\'] Failed')
@@ -102,8 +104,7 @@ class ZhiHuCommon(object):
         elif type == 'answer':
             try:
                 if ZhiHuCommon.mydb['zhihu_answer'].update({'author_name': data['author_name']},
-                                                           {'$set': data},
-                                                           True):
+                                                           {'$set': data}, True):
                     print(data['author_name'], 'Saving to mydb[\'zhihu_answer\'] Successfully...')
                 else:
                     print(data['author_name'], 'Saving to mydb[\'zhihu_answer\'] Failed')
@@ -121,8 +122,8 @@ class ZhiHuCommon(object):
 
 class ZhiHuTopicCrawler(object):
     def __init__(self):
-        self.start_url = 'https://www.zhihu.com/topic/19776749/organize/entire'
-        self.max_level = 3  # 设置爬取深度
+        self.start_url = 'https://www.zhihu.com/topic/19776749/organize/entire'  # 知乎话题树首页
+        self.max_level = 2  # 设置爬取深度
 
     def get_first_level_topic_url(self, url):  # 广度优先遍历根话题下第一层话题
         topic_level = 1  # 设置第一层话题的深度为1
@@ -132,6 +133,7 @@ class ZhiHuTopicCrawler(object):
             topic_name = item[0][1]  # 话题名称
             topic_id = item[0][2]  # 话题id
             if topic_id != '19776751':  # 「未归类」话题，多是话题别名，不作考虑
+                # 解析话题信息，保存成字典
                 topic_info = {
                     'type': item[0][0],
                     'topic_name': topic_name,
@@ -140,16 +142,16 @@ class ZhiHuTopicCrawler(object):
                     'parent_topic_name': json_data['msg'][0][1],
                     'parent_topic_id': json_data['msg'][0][2]
                 }
-                print(topic_info)
-                ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])
-                yield self.start_url + '?child=&parent={}'.format(topic_id), topic_level + 1  # 生成第二层话题的地址和深度
+                print(topic_info)  # 打印话题信息，调试用
+                ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])  # 保存
+                yield self.start_url + '?child=&parent={}'.format(topic_id)  # 生成第二层话题的地址
 
-    def get_topic_info(self, url, topic_level):  # 深度优先遍历
-        # time.sleep(1)
+    def get_topic_info(self, url, topic_level=2):  # 深度优先遍历
         try:
             if topic_level <= self.max_level:  # 判断话题爬虫深度
                 html = ZhiHuCommon.post(url)
                 json_data = json.loads(html)
+                # 解析话题信息，保存成字典
                 for item in json_data['msg'][1]:
                     topic_name = item[0][1]
                     topic_id = item[0][2]
@@ -163,7 +165,7 @@ class ZhiHuTopicCrawler(object):
                             'parent_topic_id': json_data['msg'][0][2]
                         }
                         print(topic_info)
-                        ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])
+                        # ZhiHuCommon.save2mongodb(topic_info, topic_info['type'])
                     if item[0][1] == '加载更多':  # 负责翻页，实现广度遍历
                         next_page_url = self.start_url + '?child={}&parent={}'.format(item[0][2], item[0][3])
                         self.get_topic_info(next_page_url, topic_level)
@@ -176,8 +178,21 @@ class ZhiHuTopicCrawler(object):
             print('Get_Topic_Info Error!')  # 若发生异常，则重新调用方法
 
     def topic_crawler(self):
-        for url, topic_level in self.get_first_level_topic_url(self.start_url):
-            self.get_topic_info(url, topic_level)
+        # 非多进程 耗时189秒
+        time1 = time.time()
+        for url in self.get_first_level_topic_url(self.start_url):
+            self.get_topic_info(url)
+        print('耗时' + str(int(time.time() - time1)) + '秒')
+
+        # 多进程 耗时190秒
+        # time1 = time.time()
+        # pool = multiprocessing.Pool(4)
+        # url = [url for url, topic_level in self.get_first_level_topic_url(self.start_url)]
+        # topic_level = [topic_level for url, topic_level in self.get_first_level_topic_url(self.start_url)]
+        # print(url)
+        # print(topic_level)
+        # pool.map(self.get_topic_info, url)
+        # print('耗时' + str(int(time.time() - time1)) + '秒')
 
 
 class ZhiHuQuestionCrawler(object):
@@ -187,14 +202,14 @@ class ZhiHuQuestionCrawler(object):
         self.limit = 20  # 设置每页展示信息个数
         self.max_offset = 20  # 设置最大页数，最大为1000
 
-    def get_topic_count(self, collection_name):
+    def get_topic_count(self, collection_name):  # 得到每层话题在数据库内的个数
         count = 0
         for item in ZhiHuCommon.mydb[collection_name].find():
             if item['topic_level'] == self.topic_level:
                 count += 1
         return count
 
-    def get_zhihu_topic(self):  # 用生成器的方式从MongoDB数据库中取出话题数据
+    def get_topic(self):  # 用生成器的方式从MongoDB数据库中取出话题数据
         for item in ZhiHuCommon.mydb['zhihu_topic_backup'].find():
             if item['topic_level'] == self.topic_level:
                 yield item['topic_id'], item['topic_name']
@@ -204,7 +219,7 @@ class ZhiHuQuestionCrawler(object):
         json_data = json.loads(html)
         try:
             for item in json_data['data']:
-                if item['target'].get('question'):
+                if item['target'].get('question'):  # 话题内含有问题信息
                     question_title = item['target']['question']['title']
                     question_id = item['target']['question']['id']
                     question_info = {
@@ -216,7 +231,7 @@ class ZhiHuQuestionCrawler(object):
                     }
                     print(question_info)
                     ZhiHuCommon.save2mongodb(question_info, question_info['type'])
-                elif item['target'].get('column'):
+                elif item['target'].get('column'):  # 话题内含有专栏信息
                     column_title = item['target']['column']['title']
                     column_id = item['target']['column']['id']
                     author_name = item['target']['column']['author']['name']
@@ -232,6 +247,7 @@ class ZhiHuQuestionCrawler(object):
                     }
                     print(column_info)
                     ZhiHuCommon.save2mongodb(column_info, column_info['type'])
+                    # 解析专栏内作者信息
                     user_info = {
                         'type': item['target']['column']['author']['type'],
                         'author_name': author_name,
@@ -243,18 +259,19 @@ class ZhiHuQuestionCrawler(object):
             pass
 
     def question_crawler(self):
-        if 'zhihu_topic_backup' not in ZhiHuCommon.mydb.collection_names():  # 如果是第一次运行的时候，备份话题信息数据库
+        # 如果是第一次运行的时候，备份话题信息数据库，实现断点续爬的准备
+        if 'zhihu_topic_backup' not in ZhiHuCommon.mydb.collection_names():
             for item in ZhiHuCommon.mydb['zhihu_topic'].find():
                 ZhiHuCommon.mydb['zhihu_topic_backup'].insert(item)
 
         # 解析话题，得到每个话题下的问题
-        for topic_id, topic_name in self.get_zhihu_topic():  # 从数据库拿到话题id和话题名字
+        for topic_id, topic_name in self.get_topic():  # 从数据库拿到话题id和话题名字
             for offset in range(0, self.max_offset, self.limit):  # 生成话题URL
                 url = self.topic_begin_url + '{}/feeds/essence?limit={}&offset={}'.format(topic_id, self.limit, offset)
                 self.parse_topic(url, topic_id, topic_name)  # 解析得到每个话题的问题信息
 
                 # 每爬完一个话题下的问题，就删除备份数据库的这一个话题的信息，实现断点续爬
-                if offset == self.max_offset - self.limit:
+                if offset == self.max_offset - self.limit:  # 判断是否为最后一页
                     ZhiHuCommon.mydb['zhihu_topic_backup'].delete_one({"topic_name": topic_name})
             # 负责显示进度条
             num = self.get_topic_count('zhihu_topic') - self.get_topic_count('zhihu_topic_backup')
@@ -332,7 +349,7 @@ class ZhiHuAnswerCrawler(object):
             for question_url, offset, max_offset, limit in self.get_answer_url(question_id, question_title):
                 self.parse_answer(question_url)  # 解析得到每个问题下的回答信息
                 # 每爬完一个问题下的回答，就删除备份数据库的这一个问题的信息，实现断点续爬
-                if offset == max_offset - limit:
+                if offset == max_offset - limit:  # 判断是否为最后一页
                     ZhiHuCommon.mydb['zhihu_question_backup'].delete_one({"question_id": question_id})
 
                 # 负责显示进度条
@@ -451,14 +468,14 @@ class ZhiHuUserCrawler(object):
 
 
 if __name__ == '__main__':
-    # ZhiHuTopicCrawler = ZhiHuTopicCrawler()
-    # ZhiHuTopicCrawler.topic_crawler()
+    # TopicCrawler = ZhiHuTopicCrawler()
+    # TopicCrawler.topic_crawler()
 
-    # ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
-    # ZhiHuQuestionCrawler.question_crawler()
+    ZhiHuQuestionCrawler = ZhiHuQuestionCrawler()
+    ZhiHuQuestionCrawler.question_crawler()
 
     # ZhiHuAnswerCrawler = ZhiHuAnswerCrawler()
     # ZhiHuAnswerCrawler.answer_crawler()
 
-    ZhiHuUserCrawler = ZhiHuUserCrawler()
-    ZhiHuUserCrawler.user_crawler()
+    # ZhiHuUserCrawler = ZhiHuUserCrawler()
+    # ZhiHuUserCrawler.user_crawler()
