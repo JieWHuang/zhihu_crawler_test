@@ -54,10 +54,55 @@ import multiprocessing
 #     t = MyTask()
 #     t.run()
 
-def abc(a, b, c):
-    print(a*10000 + b*100 + c)
+# def abc(a, b, c):
+#     print(a*10000 + b*100 + c)
+#
+# list1 = [11,22,33]
+# list2 = [44,55,66]
+# list3 = [77,88,99]
+# map(abc,list1,list2,list3)
 
-list1 = [11,22,33]
-list2 = [44,55,66]
-list3 = [77,88,99]
-map(abc,list1,list2,list3)
+import threading
+
+#
+# class Demo:
+#     def __init__(self, thread_num=5):
+#         self.thread_num = thread_num
+#
+#     def productor(self, i):
+#         print("thread-%d start" % i)
+#
+#     def start(self):
+#         threads = []
+#         for x in range(self.thread_num):
+#             t = threading.Thread(target=self.productor, args=(x,))
+#             threads.append(t)
+#         for t in threads:
+#             t.start()
+#         for t in threads:
+#             t.join()
+#         print('all thread end')
+#
+#
+#
+# demo = Demo()
+# demo.start()
+# import time, hashlib
+#
+#
+# def create_id():
+#     m = hashlib.md5(str(time.clock()).encode('utf-8'))
+#     return m.hexdigest()
+#
+#
+# if __name__ == '__main__':
+#     print(type(create_id()))
+#     print(create_id())
+#     print(create_id())
+#     print(create_id())
+import user_agents
+import random
+get_headers = {
+    'User-Agent': random.sample(user_agents.agents, 1)[0]
+}
+print(get_headers)
