@@ -12,7 +12,7 @@ import random
 
 class ZhiHuCommon(object):
     '''爬虫通用函数类'''
-    with open('cookies.txt') as f:  # 读取Cookies.txt内的Cookies
+    with open('Cookies.txt') as f:  # 读取Cookies.txt内的Cookies
         Cookies = f.read()
     xsrf = re.findall('_xsrf=(.*?);', Cookies)  # 用正则表达式找到Cookies里面含有的_xsrf信息
     headers = {
