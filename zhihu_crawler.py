@@ -103,8 +103,8 @@ class ZhiHuCommon(object):
                 pass
         elif type == 'answer':
             try:
-                if ZhiHuCommon.mydb['zhihu_answer'].update({'author_name': data['author_name']},
-                                                           {'$set': data}, True):
+                if ZhiHuCommon.mydb['zhihu_answer'].update({'answer_content': data['answer_content']}, {'$set': data},
+                                                           True):
                     print(data['author_name'], 'Saving to mydb[\'zhihu_answer\'] Successfully...')
                 else:
                     print(data['author_name'], 'Saving to mydb[\'zhihu_answer\'] Failed')
