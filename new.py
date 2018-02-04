@@ -4,18 +4,16 @@ import json
 import time
 import hashlib
 import re
-import sys
 import user_agents
 import cookies
 import random
+import sys
 
 
 class ZhiHuCommon(object):
     '''爬虫通用函数类'''
-    # with open('Cookies.txt') as f:  # 读取Cookies.txt内的Cookies
-    #     Cookies = f.read()
-    Cookies = random.sample(cookies.cookies, 1)[0]
-    User_Agent = random.sample(user_agents.agents, 1)[0]
+    Cookies = random.sample(cookies.cookies, 1)[0]  # 从Cookies池随机获取
+    User_Agent = random.sample(user_agents.agents, 1)[0]  # 从User-Agent池随机获取
     _xsrf = re.findall('_xsrf=(.*?);', Cookies)  # 用正则表达式找到Cookies里面含有的_xsrf信息
     headers = {
         'Cookie': Cookies,
@@ -112,11 +110,20 @@ class ZhiHuCommon(object):
                 pass
 
     @staticmethod
-    def view_bar(num, total):  # 爬虫进度条
+    def sec2time(seconds):
+        m, s = divmod(seconds, 60)
+        h, m = divmod(m, 60)
+        return "%02d:%02d:%02d" % (h, m, s)
+
+    @staticmethod
+    def view_bar(num, total, st=time.clock()):  # 爬虫进度条
         rate = num / total
         rate_num = int(rate * 100)
-        r = '\r爬虫总进度:%d/%d[%s%s]%d%%\n' % (num, total, "=" * rate_num, " " * (100 - rate_num), rate_num)
-        sys.stdout.write(r)
+        duration = int(time.clock() - st)
+        remaining = int(duration * 100 / (0.01 + rate_num) - duration)
+        r1 = '\r爬虫总进度:{0}/{1}[{2}{3}]{4}%'.format(num, total, "=" * rate_num, " " * (100 - rate_num), rate_num)
+        r2 = '\t耗时:{0},预计需要:{1}\n'.format(ZhiHuCommon.sec2time(duration), ZhiHuCommon.sec2time(remaining))
+        sys.stdout.write(r1 + r2)
         sys.stdout.flush()
 
 
@@ -184,7 +191,7 @@ class ZhiHuTopicCrawler(object):
 
 class ZhiHuQuestionCrawler(object):
     def __init__(self):
-        self.topic_begin_url = 'https://www.zhihu.com/api/v4/topics/'
+        self.topic_api = 'https://www.zhihu.com/api/v4/topics/'
         self.topic_level = 2  # 设置爬取深度
         self.limit = 20  # 设置每页展示信息个数
 
@@ -195,7 +202,7 @@ class ZhiHuQuestionCrawler(object):
                 count += 1
         return count
 
-    def get_topic(self):  # 用生成器的方式从MongoDB数据库中取出话题数据
+    def get_topic_from_db(self):  # 用生成器的方式从MongoDB数据库中取出话题数据
         for item in ZhiHuCommon.ZhiHu_db['topic_backup'].find():
             if item['topic_level'] == self.topic_level:
                 yield item['topic_id'], item['topic_name']
@@ -205,48 +212,52 @@ class ZhiHuQuestionCrawler(object):
             time.sleep(2)  # 增加暂停时间，避免IP被封
             html = ZhiHuCommon.get(url)
             json_data = json.loads(html)
-            for item in json_data['data']:
-                if item['target'].get('question'):  # 话题内含有问题信息
-                    created_time = item['target']['question']['created']
-                    question_info = {
-                        'type': item['target']['question']['type'],
-                        'question_title': item['target']['question']['title'],
-                        'question_id': item['target']['question']['id'],
-                        'created_time': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created_time)),
-                        'topic_name': topic_name,
-                        'topic_id': topic_id
-                    }
-                    # print(question_info)
-                    ZhiHuCommon.save2mongodb(question_info, question_info['type'])
-                elif item['target'].get('column'):  # 话题内含有专栏信息
-                    author_name = item['target']['column']['author']['name']
-                    author_url_token = item['target']['column']['author']['url_token']
-                    column_info = {
-                        'type': item['target']['column']['type'],
-                        'column_title': item['target']['column']['title'],
-                        'column_id': item['target']['column']['id'],
-                        'author_name': author_name,
-                        'author_url_token': author_url_token,
-                        'topic_name': topic_name,
-                        'topic_id': topic_id,
-                    }
-                    # print(column_info)
-                    ZhiHuCommon.save2mongodb(column_info, column_info['type'])
-                    # 解析专栏内作者信息
-                    user_info = {
-                        'type': item['target']['column']['author']['type'],
-                        'author_name': author_name,
-                        'author_url_token': author_url_token
-                    }
-                    # print(user_info)
-                    ZhiHuCommon.save2mongodb(user_info, user_info['type'])
             is_end = json_data['paging']['is_end']
             # 由于解析出来的URL为http协议，但需要https协议的URL，通过切片，在URL中间加入s
             next_url = json_data['paging']['next'][:4] + 's' + json_data['paging']['next'][4:]
             if is_end == False:  # 判断是否为最后一页
+                for item in json_data['data']:
+                    if item['target'].get('question'):  # 话题内含有问题信息
+                        created_time = item['target']['question']['created']
+                        question_info = {
+                            'type': item['target']['question']['type'],
+                            'question_title': item['target']['question']['title'],
+                            'question_id': item['target']['question']['id'],
+                            'created_time': time.strftime("%Y-%m-%d", time.localtime(created_time)),
+                            'topic_name': topic_name,
+                            'topic_id': topic_id
+                        }
+                        # print(question_info)
+                        ZhiHuCommon.save2mongodb(question_info, question_info['type'])
+                    elif item['target'].get('column'):  # 话题内含有专栏信息
+                        author_name = item['target']['column']['author']['name']
+                        author_url_token = item['target']['column']['author']['url_token']
+                        column_info = {
+                            'type': item['target']['column']['type'],
+                            'column_title': item['target']['column']['title'],
+                            'column_id': item['target']['column']['id'],
+                            'author_name': author_name,
+                            'author_url_token': author_url_token,
+                            'topic_name': topic_name,
+                            'topic_id': topic_id,
+                        }
+                        # print(column_info)
+                        ZhiHuCommon.save2mongodb(column_info, column_info['type'])
+                        # 解析专栏内作者信息
+                        user_info = {
+                            'type': item['target']['column']['author']['type'],
+                            'author_name': author_name,
+                            'author_url_token': author_url_token
+                        }
+                        # print(user_info)
+                        ZhiHuCommon.save2mongodb(user_info, user_info['type'])
+                # 负责显示进度条
+                num = self.get_topic_count('topic') - self.get_topic_count('topic_backup')
+                count = self.get_topic_count('topic')
+                ZhiHuCommon.view_bar(num, count)
                 self.parse_topic(next_url, topic_id, topic_name)  # 递归调用，解析下一页内容
             return True
-        except:
+        except Exception:
             pass
 
     def question_crawler(self):
@@ -254,26 +265,34 @@ class ZhiHuQuestionCrawler(object):
         if 'topic_backup' not in ZhiHuCommon.ZhiHu_db.collection_names():
             for item in ZhiHuCommon.ZhiHu_db['topic'].find():
                 ZhiHuCommon.ZhiHu_db['topic_backup'].insert(item)
+        else:
+            if ZhiHuCommon.ZhiHu_db['answer_backup'].count() != 0:
+                print('正在恢复爬取进度...')
+            else:
+                print('已经爬取完成...')
+
         # 解析话题，得到每个话题下的问题
-        for topic_id, topic_name in self.get_topic():  # 从数据库拿到话题id和话题名字
-            print('开始爬取\'{}\'下的数据...'.format(topic_name))
-            start_url = self.topic_begin_url + '{}/feeds/essence?limit={}&offset=0'.format(topic_id, self.limit)
+        for topic_id, topic_name in self.get_topic_from_db():  # 从数据库拿到话题id和话题名字
+            print('开始爬取话题:\'{}\'下的数据...'.format(topic_name))
+            start_url = self.topic_api + '{}/feeds/essence?limit={}&offset=0'.format(topic_id, self.limit)
             is_end = self.parse_topic(start_url, topic_id, topic_name)  # 解析得到每个话题的问题信息
-            # 负责显示进度条
-            num = self.get_topic_count('topic') - self.get_topic_count('topic_backup')
-            count = self.get_topic_count('topic')
-            ZhiHuCommon.view_bar(num, count)
-            # 每爬完一个话题下的问题，就删除备份数据库的这一个话题的信息，实现断点续爬
+            # 每爬完一个话题下的所有问题，就删除备份数据库的这一个话题的信息，实现断点续爬
             if is_end:
                 ZhiHuCommon.ZhiHu_db['topic_backup'].delete_one({"topic_name": topic_name})
-                print('已经爬完话题:\'{}\'下的数据,休息一下...\n'.format(topic_name))
+                print('已经爬完话题:\'{}\'下的数据,休息一下...'.format(topic_name))
+
+                # 负责显示进度条
+                num = self.get_topic_count('topic') - self.get_topic_count('topic_backup')
+                count = self.get_topic_count('topic')
+                ZhiHuCommon.view_bar(num, count)
                 time.sleep(5)  # 增加暂停时间，避免IP被封
 
 
 class ZhiHuAnswerCrawler(object):
     def __init__(self):
-        self.question_begin_url = 'https://www.zhihu.com/api/v4/questions/'
-        self.include = 'data[*].is_normal,voteup_count,content'
+        self.question_api = 'https://www.zhihu.com/api/v4/questions/'
+        self.question_api_parm = '{}/answers?include={}&offset=0&limit={}&sort_by=default'
+        self.include = 'data[*].comment_count,voteup_count,content'
         self.limit = 20  # 设置每页展示信息个数
 
     def create_user_id(self):  # 利用时间戳生成不重复匿名用户ID
@@ -291,8 +310,7 @@ class ZhiHuAnswerCrawler(object):
         return answer_count
 
     def get_question_url(self, question_id):
-        question_start_url = self.question_begin_url + '{}/answers?include={}&offset=0&limit={}&sort_by=default'.format(
-            question_id, self.include, self.limit)
+        question_start_url = self.question_api + self.question_api_parm.format(question_id, self.include, self.limit)
         answer_count = self.get_answer_count(question_start_url)
         max_offset = int(answer_count / self.limit) * self.limit
         total_page = int(max_offset / self.limit)
@@ -300,12 +318,12 @@ class ZhiHuAnswerCrawler(object):
         # max_offset = 20  # 测试用
         for offset in range(0, max_offset, self.limit):
             current_page += 1
-            question_url = self.question_begin_url + '{}/answers?include={}&offset={}&limit={}&sort_by=default'.format(
-                question_id, self.include, offset, self.limit)
+            question_url = self.question_api + self.question_api_parm.format(question_id, self.include, offset,self.limit)
             yield question_url, offset, max_offset, current_page, total_page
 
     def parse_question(self, url):
         try:
+            time.sleep(2)  # 增加暂停时间，避免IP被封
             html = ZhiHuCommon.get(url)
             json_data = json.loads(html)
             for item in json_data['data']:
@@ -314,6 +332,9 @@ class ZhiHuAnswerCrawler(object):
                 question_title = item['question']['title']
                 answer_content = re.compile(r'<[^>]+>', re.S).sub('', item['content']).replace('\n', ' ')
                 answer_voteup_count = item['voteup_count']
+                answer_comment_count = item['comment_count']
+                answer_updated_time = time.strftime("%Y-%m-%d", time.localtime(item['updated_time']))
+                answer_created_time = time.strftime("%Y-%m-%d", time.localtime(item['created_time']))
                 if author_name == '匿名用户':  # 判断是否为匿名用户，如果是，则将回答者名字改为匿名用户+id
                     author_name = {
                         'author_type': '匿名用户',
@@ -327,10 +348,13 @@ class ZhiHuAnswerCrawler(object):
                     'author_url_token': author_url_token,  # 回答者url_token
                     'answer_content': answer_content,  # 回答内容
                     'answer_content_length': len(answer_content),  # 回答长度
-                    'answer_voteup_count': answer_voteup_count  # 回答赞同人数
+                    'answer_voteup_count': answer_voteup_count,  # 回答赞同数
+                    'answer_comment_count': answer_comment_count,  # 回答评论数
+                    'answer_updated_time': answer_updated_time,  # 回答编辑时间
+                    'answer_created_time': answer_created_time  # 回答创建时间
                 }
-                print(answer_info)
-                # ZhiHuCommon.save2mongodb(answer_info, answer_info['type'])
+                # print(answer_info)
+                ZhiHuCommon.save2mongodb(answer_info, answer_info['type'])
         except Exception:
             pass
 
@@ -338,16 +362,22 @@ class ZhiHuAnswerCrawler(object):
         if 'question_backup' not in ZhiHuCommon.ZhiHu_db.collection_names():  # 如果是第一次运行的时候，备份话题信息数据库
             for item in ZhiHuCommon.ZhiHu_db['question'].find():
                 ZhiHuCommon.ZhiHu_db['question_backup'].insert(item)
+        else:
+            if ZhiHuCommon.ZhiHu_db['question_backup'].count() != 0:
+                print('正在恢复爬取进度...')
+            else:
+                print('已经爬取完成...')
+
         for question_id, question_title in self.get_question_id():  # 从数据库拿到问题id
             print('开始爬取\'{}\'下的数据...'.format(question_title))
             for question_url, offset, max_offset, current_page, total_page in self.get_question_url(question_id):
                 print('问题:\'{}\'下的数据,当前已经爬取到{}页,总页数:{}页'.format(question_title, current_page, total_page))
                 self.parse_question(question_url)  # 解析得到每个问题下的回答信息
+
                 # 负责显示进度条
                 num = ZhiHuCommon.ZhiHu_db['question'].count() - ZhiHuCommon.ZhiHu_db['question_backup'].count()
                 count = ZhiHuCommon.ZhiHu_db['question'].count()
                 ZhiHuCommon.view_bar(num, count)
-                time.sleep(2)  # 增加暂停时间，避免IP被封
                 # 每爬完一个问题下的回答，就删除备份数据库的这一个问题的信息，实现断点续爬
                 if offset == max_offset - self.limit:  # 判断是否为最后一页，如果是，则从备份表内删除已爬取完的数据
                     ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
@@ -357,17 +387,7 @@ class ZhiHuAnswerCrawler(object):
 
 class ZhiHuUserCrawler(object):
     def __init__(self):
-        self.user_begin_url = 'https://www.zhihu.com/api/v4/members/'
-        # 完整include
-        # self.include = 'headline,locations,employments,gender,educations,business,voteup_count,thanked_Count,follower_count,following_count,' \
-        #                'cover_url,following_topic_count,following_question_count,following_favlists_count,following_columns_count,' \
-        #                'avatar_hue,answer_count,articles_count,pins_count,question_count,columns_count,commercial_question_count,' \
-        #                'favorite_count,favorited_count,logs_count,included_answers_count,included_articles_count,included_text,' \
-        #                'message_thread_token,account_status,is_active,is_bind_phone,is_force_renamed,is_bind_sina,is_privacy_protected,' \
-        #                'sina_weibo_url,sina_weibo_name,show_sina_weibo,is_blocking,is_blocked,is_following,is_followed,' \
-        #                'is_org_createpin_white_user,mutual_followees_count,vote_to_count,vote_from_count,thank_to_count,thank_from_count,' \
-        #                'thanked_count,description,hosted_live_count,participated_live_count,allow_message,industry_category,org_name,' \
-        #                'org_homepage,badge[?(type=best_answerer)].topics'
+        self.user_api = 'https://www.zhihu.com/api/v4/members/'
         # 要爬取的信息集合
         self.include = 'headline,gender,locations,business,employments,educations,description,answer_count,question_count,articles_count,' \
                        'columns_count,following_count,follower_count,voteup_count,thanked_count'
@@ -375,19 +395,19 @@ class ZhiHuUserCrawler(object):
     def get_user_count(self, collection_name):  # 从数据表内获取除匿名用户外的用户总数
         count = 0
         for item in ZhiHuCommon.ZhiHu_db[collection_name].find():
-            if len(item['author_name']) != 2:
+            if type(item['author_name']) != dict:  # 排除匿名用户
                 count += 1
         return count
 
     def get_user_url(self):
         for item in ZhiHuCommon.ZhiHu_db['answer_backup'].find():
-            if len(item['author_name']) != 2:  # 排除匿名用户
-                # 拼接URL
-                user_url = self.user_begin_url + item['author_url_token'] + '?include={}'.format(self.include)
+            if type(item['author_name']) != dict:  # 排除匿名用户
+                user_url = self.user_api + item['author_url_token'] + '?include={}'.format(self.include)
                 yield user_url, item['author_url_token']
 
     def parse_user_info(self, url):
         try:
+            time.sleep(2)  # 增加暂停时间，避免IP被封
             html = ZhiHuCommon.get(url)
             json_data = json.loads(html)
             author_name = json_data['name']
@@ -445,8 +465,8 @@ class ZhiHuUserCrawler(object):
                 'voteup_count': voteup_count,
                 'thanked_count': thanked_count,
             }
-            # print(user_info)  # 调试用
-            ZhiHuCommon.save2mongodb(user_info, user_info['type'])  # 保存到数据库
+            print(user_info)  # 调试用
+            # ZhiHuCommon.save2mongodb(user_info, user_info['type'])  # 保存到数据库
         except Exception:
             pass
 
@@ -454,6 +474,11 @@ class ZhiHuUserCrawler(object):
         if 'answer_backup' not in ZhiHuCommon.ZhiHu_db.collection_names():  # 如果是第一次运行的时候，备份数据库
             for item in ZhiHuCommon.ZhiHu_db['answer'].find():
                 ZhiHuCommon.ZhiHu_db['answer_backup'].insert(item)
+        else:
+            if ZhiHuCommon.ZhiHu_db['answer_backup'].count() != 0:
+                print('正在恢复爬取进度...')
+            else:
+                print('已经爬取完成...')
         for user_url, author_url_token in self.get_user_url():  # 抽取用户数据，拼接用户主页URL
             # 解析用户数据
             self.parse_user_info(user_url)
@@ -463,7 +488,6 @@ class ZhiHuUserCrawler(object):
             num = self.get_user_count('answer') - self.get_user_count('answer_backup')
             count = self.get_user_count('answer')
             ZhiHuCommon.view_bar(num, count)
-            time.sleep(2)  # 增加暂停时间，避免IP被封
 
 
 class ZhiHuColumnCrawler(object):
@@ -529,7 +553,6 @@ class ZhiHuColumnCrawler(object):
             num = ZhiHuCommon.ZhiHu_db['column'].count() - ZhiHuCommon.ZhiHu_db['column_backup'].count()
             count = ZhiHuCommon.ZhiHu_db['column'].count()
             ZhiHuCommon.view_bar(num, count)
-            time.sleep(2)  # 增加暂停时间，避免IP被封
 
 
 if __name__ == '__main__':
@@ -539,11 +562,11 @@ if __name__ == '__main__':
     # QuestionCrawler = ZhiHuQuestionCrawler()
     # QuestionCrawler.question_crawler()
 
-    # AnswerCrawler = ZhiHuAnswerCrawler()
-    # AnswerCrawler.answer_crawler()
+    AnswerCrawler = ZhiHuAnswerCrawler()
+    AnswerCrawler.answer_crawler()
 
     # UserCrawler = ZhiHuUserCrawler()
     # UserCrawler.user_crawler()
 
-    ColumnCrawler = ZhiHuColumnCrawler()
-    ColumnCrawler.column_crawler()
+    # ColumnCrawler = ZhiHuColumnCrawler()
+    # ColumnCrawler.column_crawler()
