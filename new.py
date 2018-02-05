@@ -273,7 +273,6 @@ class ZhiHuQuestionCrawler(object):
                 print('正在恢复爬取进度...')
             else:
                 print('已经爬取完成...')
-
         # 解析话题，得到每个话题下的问题
         for topic_id, topic_name in self.get_topic_from_db():  # 从数据库拿到话题id和话题名字
             print('开始爬取话题:\'{}\'下的数据...'.format(topic_name))
@@ -297,7 +296,7 @@ class ZhiHuAnswerCrawler(object):
         self.question_parm = '{}/answers?include={}&offset={}&limit={}&sort_by=default'
         self.include = 'data[*].comment_count,voteup_count,content'
         self.limit = 20  # 设置每页展示信息个数
-        self.custom_max_offset = 10
+        self.custom_max_page = 10
 
     def create_user_id(self):  # 利用时间戳生成不重复匿名用户ID
         user_id = hashlib.md5(str(time.clock()).encode('utf-8'))  # 将当前时间戳转成md5
@@ -316,14 +315,27 @@ class ZhiHuAnswerCrawler(object):
     def get_question_url(self, question_id):
         question_start_url = self.question_api + self.question_start_parm.format(question_id, self.include, self.limit)
         answer_count = self.get_answer_count(question_start_url)
-        if int(answer_count / self.limit) <= self.custom_max_offset:  # 判断是否少于10页，如果少于10页，则爬取全部
-            max_offset = int(answer_count / self.limit) * self.limit
+        print('这个问题下总共有{}个回答...'.format(answer_count))
+        if answer_count > 0 and answer_count < self.custom_max_page * self.limit:  # 判断是否少于10页，如果少于10页，则爬取全部
+            if answer_count % self.limit == 0:
+                max_offset = int(answer_count)
+            else:
+                max_offset = (int(answer_count / self.limit) + 1) * self.limit
         else:
-            max_offset = self.limit * self.custom_max_offset
-        total_page = int(max_offset / self.limit)
-        current_page = 0
-        for offset in range(0, max_offset, self.limit):
-            current_page += 1
+            max_offset = self.custom_max_page * self.limit
+        print(max_offset)
+        if max_offset >= 40:
+            current_page = 0
+            total_page = int(max_offset / self.limit)
+            for offset in range(0, max_offset, self.limit):
+                current_page += 1
+                question_url = self.question_api + self.question_parm.format(question_id, self.include, offset,
+                                                                             self.limit)
+                yield question_url, offset, max_offset, current_page, total_page
+        elif max_offset == 20:
+            offset = 0
+            current_page = 1
+            total_page = 1
             question_url = self.question_api + self.question_parm.format(question_id, self.include, offset, self.limit)
             yield question_url, offset, max_offset, current_page, total_page
 
@@ -358,6 +370,8 @@ class ZhiHuAnswerCrawler(object):
                 }
                 # print(answer_info)
                 ZhiHuCommon.save2mongodb(answer_info, answer_info['type'])
+            print(json_data['paging']['is_end'])
+            return json_data['paging']['is_end']
         except Exception:
             pass
 
@@ -377,16 +391,26 @@ class ZhiHuAnswerCrawler(object):
             print('开始爬取\'{}\'下的数据...'.format(question_title))
             for question_url, offset, max_offset, current_page, total_page in self.get_question_url(question_id):
                 print('问题:\'{}\'下的数据,当前已经爬取到第{}页,总页数:{}页'.format(question_title, current_page, total_page))
-                self.parse_question(question_url)  # 解析得到每个问题下的回答信息
+                is_end = self.parse_question(question_url)  # 解析得到每个问题下的回答信息
                 # 负责显示进度条
                 num = ZhiHuCommon.ZhiHu_db['question'].count() - ZhiHuCommon.ZhiHu_db['question_backup'].count()
                 count = ZhiHuCommon.ZhiHu_db['question'].count()
                 ZhiHuCommon.view_bar(num, count)
                 # 每爬完一个问题下的回答，就删除备份数据库的这一个问题的信息，实现断点续爬
-                if offset == max_offset - self.limit:  # 判断是否为最后一页，如果是，则从备份表内删除已爬取完的数据
-                    ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
-                    print('已经爬完问题:\'{}\'下前10页的数据,休息一下...'.format(question_title))
-                    time.sleep(5)  # 增加暂停时间，避免IP被封
+                # 判断总页数是否只有1页，若是，则根据is_end判断是否删除信息
+                if total_page == 1:
+                    if is_end:
+                        ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
+                        print('已经爬完问题:\'{}\'下全部的数据,休息一下...'.format(question_title))
+                        time.sleep(5)  # 增加暂停时间，避免IP被封
+                elif total_page > 1:
+                    if offset == max_offset - self.limit:  # 判断是否为最后一页，如果是，则从备份表内删除已爬取完的数据
+                        ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
+                        if total_page < 10:
+                            print('已经爬完问题:\'{}\'下全部的数据,休息一下...'.format(question_title))
+                        else:
+                            print('已经爬完问题:\'{}\'下前{}页的数据,休息一下...'.format(question_title, total_page))
+                        time.sleep(5)  # 增加暂停时间，避免IP被封
 
 
 class ZhiHuUserCrawler(object):
