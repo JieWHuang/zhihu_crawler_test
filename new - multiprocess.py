@@ -397,7 +397,7 @@ class ZhiHuAnswerCrawler(object):
 
     def parse_question(self, url):
         try:
-            time.sleep(2)  # 增加暂停时间，避免IP被封
+            time.sleep(5)  # 增加暂停时间，避免IP被封
             html = ZhiHuCommon.get(url)
             json_data = json.loads(html)
             for item in json_data['data']:
@@ -430,6 +430,27 @@ class ZhiHuAnswerCrawler(object):
         except Exception:
             pass
 
+    def crawler_function(self, question_title, question_id, question_url, offset, max_offset, current_page, total_page):
+        print('问题:\'{}\'下的数据,当前已经爬取到第{}页,总页数:{}页'.format(question_title, current_page, total_page))
+        is_end = self.parse_question(question_url)  # 解析得到每个问题下的回答信息
+
+        # 每爬完一个问题下的回答，就删除备份数据库的这一个问题的信息，实现断点续爬
+        # 判断总页数是否少于10页，若是，则根据is_end判断是否删除信息
+        if total_page < self.custom_max_page:
+            if is_end:
+                ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
+                print('已经爬完问题:\'{}\'下全部的数据...'.format(question_title))
+                time.sleep(2)  # 增加暂停时间，避免IP被封
+        elif total_page == self.custom_max_page:
+            if is_end:  # 判断是否为最后一页
+                ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
+                print('已经爬完问题:\'{}\'下全部的数据...'.format(question_title))
+                time.sleep(2)  # 增加暂停时间，避免IP被封
+            elif offset == max_offset - self.limit:
+                ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
+                print('已经爬完问题:\'{}\'下前{}页的数据...'.format(question_title, total_page))
+                time.sleep(2)  # 增加暂停时间，避免IP被封
+
     def answer_crawler(self):
         if 'question_backup' not in ZhiHuCommon.ZhiHu_db.collection_names():  # 如果是第一次运行的时候，备份数据库
             print('正在备份数据，请稍等...')
@@ -441,31 +462,21 @@ class ZhiHuAnswerCrawler(object):
                 print('正在恢复爬取进度...')
             else:
                 print('已经爬取完成...')
+        pool = Pool(4)
+        crawler_count = 0
         for question_id, question_title in self.get_question_info():  # 从数据库拿到问题id
             print('开始爬取\'{}\'下的数据...'.format(question_title))
             for question_url, offset, max_offset, current_page, total_page in self.get_question_url(question_id):
-                print('问题:\'{}\'下的数据,当前已经爬取到第{}页,总页数:{}页'.format(question_title, current_page, total_page))
-                is_end = self.parse_question(question_url)  # 解析得到每个问题下的回答信息
-                # 负责显示进度条
-                num = ZhiHuCommon.ZhiHu_db['question'].count() - ZhiHuCommon.ZhiHu_db['question_backup'].count()
-                count = ZhiHuCommon.ZhiHu_db['question'].count()
-                ZhiHuCommon.view_bar(num, count)
-                # 每爬完一个问题下的回答，就删除备份数据库的这一个问题的信息，实现断点续爬
-                # 判断总页数是否少于10页，若是，则根据is_end判断是否删除信息
-                if total_page < self.custom_max_page:
-                    if is_end:
-                        ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
-                        print('已经爬完问题:\'{}\'下全部的数据...'.format(question_title))
-                        time.sleep(2)  # 增加暂停时间，避免IP被封
-                elif total_page == self.custom_max_page:
-                    if is_end:  # 判断是否为最后一页
-                        ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
-                        print('已经爬完问题:\'{}\'下全部的数据...'.format(question_title))
-                        time.sleep(2)  # 增加暂停时间，避免IP被封
-                    elif offset == max_offset - self.limit:
-                        ZhiHuCommon.ZhiHu_db['question_backup'].delete_one({"question_id": question_id})
-                        print('已经爬完问题:\'{}\'下前{}页的数据...'.format(question_title, total_page))
-                        time.sleep(2)  # 增加暂停时间，避免IP被封
+                pool.apply_async(self.crawler_function, (
+                    question_title, question_id, question_url, offset, max_offset, current_page, total_page,))
+                crawler_count += 1
+                if crawler_count % 40 == 0:
+                    # 负责显示进度条
+                    num = ZhiHuCommon.ZhiHu_db['question'].count() - ZhiHuCommon.ZhiHu_db['question_backup'].count()
+                    count = ZhiHuCommon.ZhiHu_db['question'].count()
+                    ZhiHuCommon.view_bar(num, count)
+        pool.close()
+        pool.join()
 
 
 class ZhiHuUserCrawler(object):
@@ -595,6 +606,12 @@ class ZhiHuUserCrawler(object):
             print(e.args[0])
             time.sleep(3)
 
+    def crawler_function(self, user_url, author_url_token):
+        # 解析用户数据
+        self.parse_user_info(user_url)
+        # 实现断点续爬
+        ZhiHuCommon.ZhiHu_db['answer_backup'].delete_many({"author_url_token": author_url_token})
+
     def user_crawler(self):
         if 'answer_backup' not in ZhiHuCommon.ZhiHu_db.collection_names():  # 如果是第一次运行的时候，备份数据库
             print('正在备份数据，请稍等...')
@@ -607,16 +624,18 @@ class ZhiHuUserCrawler(object):
                 print('正在恢复爬取进度...')
             else:
                 print('已经爬取完成...')
+        pool = Pool(4)  # 创建进程池，实现多进程
+        crawler_count = 0
         for user_url, author_url_token in self.get_user_url():  # 抽取用户数据，拼接用户主页URL
-            # 解析用户数据
-            self.parse_user_info(user_url)
-            # 实现断点续爬
-            ZhiHuCommon.ZhiHu_db['answer_backup'].delete_many({"author_url_token": author_url_token})
-            print('请稍等...')
-            # 负责显示进度条
-            num = self.get_user_count('answer') - self.get_user_count('answer_backup')
-            count = self.get_user_count('answer')
-            ZhiHuCommon.view_bar(num, count)
+            pool.apply_async(self.crawler_function, (user_url, author_url_token,))
+            crawler_count += 1
+            if crawler_count % 20 == 0:  # 显示进度条需要遍历数据库，数据量较大，导致任务过慢，设置爬取20个数据显示一次进度条
+                # 负责显示进度条
+                num = self.get_user_count('answer') - self.get_user_count('answer_backup')
+                count = self.get_user_count('answer')
+                ZhiHuCommon.view_bar(num, count)
+        pool.close()
+        pool.join()
 
 
 class ZhiHuColumnCrawler(object):
