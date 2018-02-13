@@ -180,6 +180,11 @@ class ZhiHuCommon(object):
         content = ZhiHuCommon.replaceCharEntity(content)  # 替换实体
         return content
 
+    @staticmethod
+    def create_id():  # 利用时间戳生成不重复匿名用户ID
+        user_id = hashlib.md5(str(time.clock()).encode('utf-8'))  # 将当前时间戳转成md5
+        return user_id.hexdigest()
+
 
 class ZhiHuTopicCrawler(object):
     def __init__(self):
@@ -360,10 +365,6 @@ class ZhiHuAnswerCrawler(object):
         self.custom_max_page = 20  # 自定义最大页数
         self.processes = 4  # 多进程设置
 
-    def create_user_id(self):  # 利用时间戳生成不重复匿名用户ID
-        user_id = hashlib.md5(str(time.clock()).encode('utf-8'))  # 将当前时间戳转成md5
-        return user_id.hexdigest()
-
     def get_question_info(self):  # 从MongoDB数据库中取出问题数据
         for item in ZhiHuCommon.ZhiHu_db['question_backup'].find().batch_size(5):  # batch_size:10分钟内讷讷感爬完的量
             yield item['question_id'], item['question_title']
@@ -417,7 +418,7 @@ class ZhiHuAnswerCrawler(object):
                 answer_updated_time = time.strftime("%Y-%m-%d", time.localtime(item['updated_time']))
                 answer_created_time = time.strftime("%Y-%m-%d", time.localtime(item['created_time']))
                 if author_name == '匿名用户':  # 判断是否为匿名用户，如果是，则将回答者名字改为匿名用户+id
-                    author_name = '匿名用户' + self.create_user_id()
+                    author_name = '匿名用户' + ZhiHuCommon.create_id()
                     author_url_token = '无'
                 answer_info = {
                     'type': item['type'],
@@ -512,16 +513,20 @@ class ZhiHuUserCrawler(object):
 
     def parse_user_info(self, url):
         try:
-            time.sleep(1)  # 增加暂停时间，避免IP被封
+            # time.sleep(1)  # 增加暂停时间，避免IP被封
             html = ZhiHuCommon.get(url)
             json_data = json.loads(html)
             author_name = json_data['name']
             author_url_token = json_data['url_token']
+            if author_name == '[已重置]':
+                author_name = '违规账号:' + author_url_token
             headline = ZhiHuCommon.filter_tags(json_data['headline'])
-            if json_data['gender']:
+            if json_data['gender'] == 1:
                 gender = '男'
-            else:
+            elif json_data['gender'] == 0:
                 gender = '女'
+            elif json_data['gender'] == (-1):
+                gender = '暂无数据'
             if json_data.get('locations'):
                 if len(json_data['locations']) > 1:
                     locations = []
@@ -639,17 +644,17 @@ class ZhiHuUserCrawler(object):
     def user_crawler(self):
         self.data_backup()
         pool = Pool(self.processes)  # 创建进程池，实现多进程
-        crawler_count = 0
-        answer_count = self.get_user_count('answer')
+        # crawler_count = 0
+        # answer_count = self.get_user_count('answer')
         for user_url, author_url_token in self.get_user_url():  # 抽取用户数据，拼接用户主页URL
             pool.apply_async(self.crawler_function, (user_url, author_url_token,))
-            crawler_count += 1
+            # crawler_count += 1
             # print(crawler_count)
-            if crawler_count % (self.processes * 10) == 0:  # 显示进度条需要遍历数据库，数据量较大，导致任务过慢，设置爬取20个数据显示一次进度条
-                # 负责显示进度条
-                num = answer_count - self.get_user_count('answer_backup')
-                ZhiHuCommon.view_bar(num, answer_count)
-                crawler_count = 0
+            # if crawler_count % self.processes == 0:  # 显示进度条需要遍历数据库，数据量较大，导致任务过慢，设置爬取20个数据显示一次进度条
+            # 负责显示进度条
+            # num = answer_count - self.get_user_count('answer_backup')
+            # ZhiHuCommon.view_bar(num, answer_count)
+            # crawler_count = 0
         pool.close()
         pool.join()
 
@@ -701,10 +706,11 @@ class ZhiHuColumnCrawler(object):
                 'postTopics': postTopics,
                 'Topics': Topics
             }
-            print(column_info)
+            # print(column_info)
             ZhiHuCommon.save2mongodb(column_info, column_info['type'])
         except Exception as e:
             print(e.args[0])
+            time.sleep(3)
 
     def data_backup(self):
         if 'column_backup' not in ZhiHuCommon.ZhiHu_db.collection_names():  # 如果是第一次运行的时候，备份数据库
@@ -732,7 +738,7 @@ class ZhiHuColumnCrawler(object):
         for column_url, column_id in self.get_column_url():
             pool.apply_async(self.crawler_function, (column_url, column_id,))
             crawler_count += 1
-            if crawler_count % (self.processes * 10) == 0:
+            if crawler_count % self.processes == 0:
                 # 负责显示进度条
                 num = column_count - ZhiHuCommon.ZhiHu_db['column_backup'].count()
                 ZhiHuCommon.view_bar(num, column_count)
